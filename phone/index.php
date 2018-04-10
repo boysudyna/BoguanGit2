@@ -3,10 +3,16 @@
 * 统计boguan每月对账数据
 * 写入到数据库程序
 * Add: 批量执行文件
+* Add: 补入先前无限开通后面取消的用户，唯一key增加上type
+* Add：增加一列更新日期，插入无限开通日期后取消的操作时间， 增加数据源的日志文件名
 */
 
 define('DEBUG', true);
+set_time_limit(0);
 include '../library.inc.php';
+if($_GET['key'] != 'exec')
+    exit("请确认后在访问！");
+
 
 $dbConfig = array(
     'host'    => '127.0.0.1', 
@@ -20,7 +26,7 @@ $dbConfig = array(
 $db = ConnectMysqli::getIntance($dbConfig);
 
 echo  '开始创建数据库 =====<br />';
-$tableName = "t_phone_draft_bak";
+$tableName = "t_phone_draft";
 $onlyFile = $_GET['file'];
 
 $hasSql = "SHOW TABLES LIKE '{$tableName}'";
@@ -32,7 +38,7 @@ if ($hasRet) {
     $createSql = <<<SQL
         CREATE TABLE {$tableName} (
             `pd_id` bigint(11) NOT NULL,
-            `pd_type` int(11) NOT NULL,
+            `pd_type` int(11) NOT NULL, -- 1无限开通  3有限开通
             `pd_phone` bigint(11) NOT NULL,
             `pd_province` varchar(50) NOT NULL,
             `pd_city` varchar(50) NOT NULL,
@@ -46,7 +52,9 @@ if ($hasRet) {
             `pd_mtime` int(11) NOT NULL,
             `pd_channeltype` int(11) NOT NULL,
             `pd_storeid` int(11) NOT NULL,
-            UNIQUE  `U_index` (`pd_phone`,`pd_sdate`,`pd_name`)
+            `pd_file` char(6) NOT NULL,
+            `pd_adddate` datetime NOT NULL,
+            UNIQUE  `U_index` (`pd_phone`,`pd_type`,`pd_sdate`,`pd_name`)
         ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COMMENT='手机保障数据表汇总'
 SQL;
     $db->query($createSql);
@@ -85,6 +93,8 @@ foreach($fileList as $file){
 
             $arr = explode('|', $strings);
             array_map(addslashes, $arr);
+            array_push($arr, $file);
+            array_push($arr, '3000-01-01 00:00:00');
             $arrStr .= '(\'' . implode('\',\'', $arr) . '\'),';
             if ($i % 1000 == 0) {
                 $sqlStr = substr($sql . $arrStr, 0, -1);
@@ -109,6 +119,6 @@ foreach($fileList as $file){
 $etime = microtime(true);
 $utime = $etime - $stime;
 $i -= 2;
-echo  "全部写入成功, 耗时：{$utime}s =====<br />";
+echo "全部写入成功, 耗时：{$utime}s =====<br />";
 exit;
 

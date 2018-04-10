@@ -4,7 +4,6 @@
 
 // echo $GLOBALS['HTTP_RAW_POST_DATA']; // 如果传递的是json数据，需用这输出显示 或者 $post = file_get_contents("php://input");
 
-
 function my_dir($dir) {
     $files = array();
     if(@$handle = opendir($dir)) { //注意这里要加一个@，不然会有warning错误提示：）

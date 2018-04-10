@@ -8,6 +8,9 @@ define('DEBUG', true);
 set_time_limit(0);
 include '../library.inc.php';
 date_default_timezone_set('Asia/Shanghai');
+if($_GET['key'] != 'exec')
+    exit("请确认后在访问！");
+
 
 $dbConfig = array(
     'host'    => '127.0.0.1', 
@@ -19,26 +22,9 @@ $dbConfig = array(
 
 $inpFileTag = $_GET['input'] ? $_GET['input'] : 0;
 $currMonth = date('Ym');
-
-$monTag = $fileName = $_GET['file'] ? $_GET['file'] : '201801';
-
-$putFileName = 'count_'.$fileName.'.txt';
-// 重置表内容
-if($inpFileTag)
-    $fopen = file_put_contents($putFileName, '');
-
-// 表头
-$fileStr .= "电话\t运营商\t订购开始日期\t订购结束日期\t套餐\t天数\t价格".PHP_EOL;
-if($inpFileTag)
-    $fopen = file_put_contents($putFileName, $fileStr, FILE_APPEND);
-
-$tableName = "t_phone_detail";
+$begMonth = '201612';
+$tableName = "t_phone_detail_bak";
 $searchName = "t_phone_draft";
-$y = substr($fileName, 0, 4);
-$m = substr($fileName, 4, 2);
-// 当月的数据实际为统计上个月
-$y = date('Y', strtotime("{$y}-{$m}-01 00:00 -1 months"));
-$m = date('m', strtotime("{$y}-{$m}-01 00:00 -1 months"));
 $priceConfig = array(
     '1000260007' => 4,
     '1000260008' => 9,
@@ -47,10 +33,6 @@ $priceConfig = array(
     '1000260011' => 29,
     '1000260012' => 29,
 );
-
-$monthFir = $y.'-'.$m.'-01'.' 00:00:00';
-$monthDays = date('t', mktime(0,0,0,$m,01,$y));
-$monthLast = $y.'-'.$m.'-'.$monthDays.' 00:00:00';
 
 $db = ConnectMysqli::getIntance($dbConfig);
 $hasSql = "SHOW TABLES LIKE '{$tableName}'";
@@ -76,76 +58,112 @@ SQL;
 }
 
 $stime = microtime(true);
+echo '提示：开启文件写入?input=1; 开启单个月份查询?month=201801<br />';
+
 echo  '开始读取数据库并计算 =====<br />';
-$condSql = "pd_sdate<='{$monthLast}' AND pd_edate>='{$monthFir}'";
-$insSql = "INSERT IGNORE INTO {$tableName} VALUES ";
-$per = 1000;
-$offset = 0;
-$sql = "SELECT COUNT(*) as S FROM {$searchName} WHERE {$condSql}";
-$countNum = $db->getRow($sql);
-$countNum = $countNum['S'];
-$totalNum += $countNum;
-do{
-    $sql = "SELECT pd_phone,pd_city,pd_sdate,pd_edate,pd_name
-            FROM {$searchName} 
-            WHERE {$condSql}
-            LIMIT {$offset}, {$per}";
-    $retArr = $db->getAll($sql);
-    $offset += $per;
-    if (!$retArr) 
+$onlyMonth = $_GET['month'];
+do {
+    $monTag = $fileName = $begMonth;
+    $y = substr($fileName, 0, 4);
+    $m = substr($fileName, 4, 2);
+    $begMonthDate = "{$y}-{$m}-01 00:00";
+    if($onlyMonth && $onlyMonth != $begMonth){
+        $begMonth = date('Ym', strtotime("{$begMonthDate} +1 months"));
         continue;
-
-    $insStr = '';
-    $fileStr = "";
-    foreach ($retArr as $key => $val) {
-        // 月费
-        $monthPrice = $priceConfig[$val['pd_name']];
-        // 天费
-        $dayPrice = ceil(($monthPrice/$monthDays)*100)/100; // 小数点后两位进一取法
-        // 整月
-        if ($val['pd_sdate'] <= $monthFir && $val['pd_edate'] >= $monthLast) {
-            $days = $monthDays;
-            $needPrice = $monthPrice;
-        }
-        // 前月开通，当月结束
-        if ($val['pd_sdate'] <= $monthFir && $val['pd_edate'] < $monthLast && $val['pd_edate'] > $monthFir) {
-            $days = diff_days($monthFir, $val['pd_edate']);
-            $needPrice = $dayPrice * $days;
-        }
-        // 当月开通，后月结束
-        if ($val['pd_sdate'] > $monthFir && $val['pd_edate'] >= $monthLast) {
-            $days = diff_days($val['pd_sdate'], $monthLast); 
-            $needPrice = $dayPrice * $days;   
-        }
-        // 当月开通，当月结束    
-        if ($val['pd_sdate'] > $monthFir && $val['pd_edate'] < $monthLast) {
-            $days = diff_days($val['pd_sdate'], $val['pd_edate']);
-            $needPrice = $dayPrice * $days;
-        }
-
-        $needPrice = $needPrice >= $monthPrice ? $monthPrice : $needPrice;
-        $insStr .= "('',{$val['pd_phone']},'{$val['pd_city']}','{$val['pd_sdate']}',
-                    '{$val['pd_edate']}',{$val['pd_name']},{$days},{$needPrice},'{$monTag}',{$currMonth}),";  
-        $fileStr .= "{$val['pd_phone']}\t{$val['pd_city']}\t{$val['pd_sdate']}\t{$val['pd_edate']}\t{$val['pd_name']}\t{$days}\t{$needPrice}".PHP_EOL;
-        
-        $needTotal += $needPrice;
     }
 
-    $sqlStr = substr($insSql . $insStr, 0, -1);
-    $db->query($sqlStr);
+    $putFileName = './count/count_'.$fileName.'.txt';
+    // 重置表内容
+    if($inpFileTag)
+        $fopen = file_put_contents($putFileName, '');
+
+    // 表头
+    $fileStr .= "电话\t运营商\t订购开始日期\t订购结束日期\t套餐\t天数\t价格".PHP_EOL;
     if($inpFileTag)
         $fopen = file_put_contents($putFileName, $fileStr, FILE_APPEND);
-}while($offset < $countNum);
 
-$needTotal =  round($needTotal, 2);
-$fileStr .= "\t\t\t\t\t\t\t应收金额：{$needTotal}".PHP_EOL;
-if($inpFileTag)
-    $fopen = file_put_contents($putFileName, $fileStr, FILE_APPEND);
+    // 当月的数据实际为统计上个月
+    $y = date('Y', strtotime("{$y}-{$m}-01 00:00 -1 months"));
+    $m = date('m', strtotime("{$y}-{$m}-01 00:00 -1 months"));
+    $monthFir = $y.'-'.$m.'-01'.' 00:00:00';
+    $monthDays = date('t', mktime(0,0,0,$m,01,$y));
+    $monthLast = $y.'-'.$m.'-'.$monthDays.' 00:00:00';
+    $condSql = "pd_sdate<='{$monthLast}' AND pd_edate>='{$monthFir}'";
+    $insSql = "INSERT IGNORE INTO {$tableName} VALUES ";
+    $per = 1000;
+    $offset = $needTotal = 0;
+    $sql = "SELECT COUNT(*) as S FROM {$searchName} WHERE {$condSql}";
+    $countNum = $db->getRow($sql);
+    if(! $countNum)
+        continue;
 
-// 汇总统计到数据库中
-$countTable = "t_phone_detail_count";
-$iSql = "INSERT INTO {$countTable} VALUES ('','{$monTag}','{$needTotal}','{$currMonth}')";
-$db->query($iSql);
+    $countNum = $countNum['S'];
+    $totalNum += $countNum;
+
+    do{
+        $sql = "SELECT pd_phone,pd_city,pd_sdate,pd_edate,pd_name
+                FROM {$searchName} 
+                WHERE {$condSql}
+                LIMIT {$offset}, {$per}";
+        $retArr = $db->getAll($sql);
+        $offset += $per;
+        if (!$retArr) 
+            continue;
+
+        $insStr = '';
+        $fileStr = "";
+        foreach ($retArr as $key => $val) {
+            // 月费
+            $monthPrice = $priceConfig[$val['pd_name']];
+            // 天费
+            $dayPrice = ceil(($monthPrice/$monthDays)*100)/100; // 小数点后两位进一取法
+            // 整月
+            if ($val['pd_sdate'] <= $monthFir && $val['pd_edate'] >= $monthLast) {
+                $days = $monthDays;
+                $needPrice = $monthPrice;
+            }
+            // 前月开通，当月结束
+            if ($val['pd_sdate'] <= $monthFir && $val['pd_edate'] < $monthLast && $val['pd_edate'] > $monthFir) {
+                $days = diff_days($monthFir, $val['pd_edate']);
+                $needPrice = $dayPrice * $days;
+            }
+            // 当月开通，后月结束
+            if ($val['pd_sdate'] > $monthFir && $val['pd_edate'] >= $monthLast) {
+                $days = diff_days($val['pd_sdate'], $monthLast); 
+                $needPrice = $dayPrice * $days;   
+            }
+            // 当月开通，当月结束    
+            if ($val['pd_sdate'] > $monthFir && $val['pd_edate'] < $monthLast) {
+                $days = diff_days($val['pd_sdate'], $val['pd_edate']);
+                $needPrice = $dayPrice * $days;
+            }
+
+            $needPrice = $needPrice >= $monthPrice ? $monthPrice : $needPrice;
+            $insStr .= "('',{$val['pd_phone']},'{$val['pd_city']}','{$val['pd_sdate']}',
+                        '{$val['pd_edate']}',{$val['pd_name']},{$days},{$needPrice},'{$monTag}',{$currMonth}),";  
+            $fileStr .= "{$val['pd_phone']}\t{$val['pd_city']}\t{$val['pd_sdate']}\t{$val['pd_edate']}\t{$val['pd_name']}\t{$days}\t{$needPrice}".PHP_EOL;
+            
+            $needTotal += $needPrice;
+        }
+
+        $sqlStr = substr($insSql . $insStr, 0, -1);
+        $db->query($sqlStr);
+        if($inpFileTag)
+            $fopen = file_put_contents($putFileName, $fileStr, FILE_APPEND);
+    }while($offset < $countNum);
+
+    $needTotal =  round($needTotal, 2);
+    $fileStr .= "\t\t\t\t\t\t\t应收金额：{$needTotal}".PHP_EOL;
+    if($inpFileTag)
+        $fopen = file_put_contents($putFileName, $fileStr, FILE_APPEND);
+
+    // 汇总统计到数据库中
+    $countTable = "t_phone_detail_count";
+    $iSql = "INSERT INTO {$countTable} VALUES ('','{$monTag}','{$needTotal}','{$currMonth}')";
+    $db->query($iSql);
+    
+    $begMonth = date('Ym', strtotime("{$begMonthDate} +1 months"));
+} while ( $begMonth <= $currMonth );
 
 $etime = microtime(true);
 $utime = $etime - $stime;
