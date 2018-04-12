@@ -23,7 +23,7 @@ $dbConfig = array(
 $inpFileTag = $_GET['input'] ? $_GET['input'] : 0;
 $currMonth = date('Ym');
 $begMonth = '201612';
-$tableName = "t_phone_detail_bak";
+$tableName = "t_phone_detail";
 $searchName = "t_phone_draft";
 $priceConfig = array(
     '1000260007' => 4,
@@ -88,7 +88,8 @@ do {
     $monthFir = $y.'-'.$m.'-01'.' 00:00:00';
     $monthDays = date('t', mktime(0,0,0,$m,01,$y));
     $monthLast = $y.'-'.$m.'-'.$monthDays.' 00:00:00';
-    $condSql = "pd_sdate<='{$monthLast}' AND pd_edate>='{$monthFir}'";
+    // pd_adddate不等于3000-01-01 00:00:00，表示当前信息被替代了要排除计算
+    $condSql = "pd_edate>'{$monthFir}' AND pd_sdate<='{$monthLast}' AND pd_adddate='3000-01-01 00:00:00'"; 
     $insSql = "INSERT IGNORE INTO {$tableName} VALUES ";
     $per = 1000;
     $offset = $needTotal = 0;

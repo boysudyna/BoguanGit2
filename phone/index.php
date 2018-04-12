@@ -32,8 +32,8 @@ $onlyFile = $_GET['file'];
 $hasSql = "SHOW TABLES LIKE '{$tableName}'";
 $hasRet = $db->getRow($hasSql);
 if ($hasRet) {
-    $sql = "TRUNCATE TABLE {$tableName}";
-    $db->query($sql);
+    // $sql = "TRUNCATE TABLE {$tableName}";
+    // $db->query($sql);
 } else {
     $createSql = <<<SQL
         CREATE TABLE {$tableName} (
@@ -120,5 +120,17 @@ $etime = microtime(true);
 $utime = $etime - $stime;
 $i -= 2;
 echo "全部写入成功, 耗时：{$utime}s =====<br />";
+
+// 更新之前开通无限后面关闭无限的客户(有些客户存在一样的三条记录，其他type=2的应该可以归类异常)
+$sql = "select * from {$tableName} where pd_adddate ='3000-01-01 00:00:00' group by pd_id having count(*) >1";
+$repArr = $db->getAll($sql);
+foreach ($repArr as $k => $v) {
+    $upSql = "update {$tableName} set pd_adddate=pd_sdate where pd_id={$v['pd_id']} and pd_type=1";
+    $db->query($upSql);
+}
+
+$eetime = microtime(true);
+$utime = $eetime - $etime;
+echo "执行开通无限保障后面关闭的用户, 耗时：{$utime}s =====<br />";
 exit;
 
